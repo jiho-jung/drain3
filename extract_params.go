@@ -17,6 +17,7 @@ type ExtractedParameter struct {
 type ParameterExtractor struct {
 	masker                *LogMasker
 	extraDelimiterRegexps []*regexp.Regexp
+	paramStr              string
 	cache                 sync.Map // map[string]*extractionRegex
 }
 
@@ -28,6 +29,16 @@ type extractionRegex struct {
 // NewParameterExtractor creates a new ParameterExtractor.
 // Extra delimiters are treated as regex patterns, consistent with Drain's tokenization.
 func NewParameterExtractor(masker *LogMasker, extraDelimiters []string) *ParameterExtractor {
+	paramStr := DefaultParamStr
+	if masker != nil {
+		paramStr = masker.MaskPrefix + "*" + masker.MaskSuffix
+	}
+	return NewParameterExtractorWithParamStr(masker, extraDelimiters, paramStr)
+}
+
+// NewParameterExtractorWithParamStr creates a new ParameterExtractor with the
+// Drain wildcard placeholder used in mined templates.
+func NewParameterExtractorWithParamStr(masker *LogMasker, extraDelimiters []string, paramStr string) *ParameterExtractor {
 	var delimRegexps []*regexp.Regexp
 	for _, delim := range extraDelimiters {
 		re, err := regexp.Compile(delim)
@@ -39,6 +50,7 @@ func NewParameterExtractor(masker *LogMasker, extraDelimiters []string) *Paramet
 	return &ParameterExtractor{
 		masker:                masker,
 		extraDelimiterRegexps: delimRegexps,
+		paramStr:              paramStr,
 	}
 }
 
@@ -98,9 +110,24 @@ func (pe *ParameterExtractor) buildExtractionRegex(logTemplate string, exactMatc
 	// Replace whitespace with flexible whitespace matcher
 	escaped = strings.ReplaceAll(escaped, "\\ ", `\s+`)
 
-	// Collect all mask names we need to handle
+	paramStr := pe.paramStr
+	if paramStr == "" {
+		paramStr = DefaultParamStr
+	}
+
+	// Replace the Drain catch-all placeholder.
+	paramSearchStr := regexp.QuoteMeta(paramStr)
+	for strings.Contains(escaped, paramSearchStr) {
+		groupName := "p" + strconv.Itoa(paramCounter)
+		paramCounter++
+		groupToMaskName[groupName] = "*"
+
+		replacement := "(?P<" + groupName + ">.+?)"
+		escaped = strings.Replace(escaped, paramSearchStr, replacement, 1)
+	}
+
+	// Collect named mask placeholders we need to handle.
 	maskNames := make(map[string]bool)
-	maskNames["*"] = true // The Drain catch-all
 	if pe.masker != nil {
 		for _, name := range pe.masker.MaskNames() {
 			maskNames[name] = true
@@ -114,7 +141,7 @@ func (pe *ParameterExtractor) buildExtractionRegex(logTemplate string, exactMatc
 		suffix = pe.masker.MaskSuffix
 	}
 
-	// Replace each mask placeholder with a named capture group
+	// Replace each named mask placeholder with a named capture group.
 	for maskName := range maskNames {
 		searchStr := regexp.QuoteMeta(prefix + maskName + suffix)
 		for strings.Contains(escaped, searchStr) {

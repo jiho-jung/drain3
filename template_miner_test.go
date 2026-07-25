@@ -184,7 +184,7 @@ func TestExtractParameters(t *testing.T) {
 	tm.AddLogMessage("user alice logged in")
 	tm.AddLogMessage("user bob logged in")
 
-	pe := NewParameterExtractor(tm.Masker, tm.Config.Drain.ExtraDelimiters)
+	pe := tm.NewParameterExtractor()
 
 	params := pe.ExtractParameters("user <*> logged in", "user charlie logged in", false)
 	if params == nil {
@@ -301,7 +301,7 @@ func TestExtractParametersWithRegexExtraDelimiters(t *testing.T) {
 		t.Fatalf("expected template change, got %v", result.ChangeType)
 	}
 
-	pe := NewParameterExtractor(tm.Masker, tm.Config.Drain.ExtraDelimiters)
+	pe := tm.NewParameterExtractor()
 	params := pe.ExtractParameters(result.Cluster.GetTemplate(), "status=[404] path=/a", false)
 	if params == nil {
 		t.Fatal("expected extracted params")
@@ -335,6 +335,36 @@ func TestParamStrDerivedFromMaskPrefixSuffix(t *testing.T) {
 	cluster := tm.Clusters()[0]
 	if cluster.GetTemplate() != "user {{*}} logged in" {
 		t.Fatalf("expected 'user {{*}} logged in', got %q", cluster.GetTemplate())
+	}
+}
+
+func TestExtractParametersUsesConfiguredParamStr(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Drain.ParamStr = "<?>"
+	cfg.Masking.MaskPrefix = "{{"
+	cfg.Masking.MaskSuffix = "}}"
+
+	tm, err := NewTemplateMiner(nil, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tm.AddLogMessage("user alice logged in")
+	result := tm.AddLogMessage("user bob logged in")
+	if result.Cluster.GetTemplate() != "user <?> logged in" {
+		t.Fatalf("expected 'user <?> logged in', got %q", result.Cluster.GetTemplate())
+	}
+
+	params := tm.NewParameterExtractor().ExtractParameters(
+		result.Cluster.GetTemplate(),
+		"user charlie logged in",
+		false,
+	)
+	if len(params) != 1 {
+		t.Fatalf("expected 1 param, got %d: %#v", len(params), params)
+	}
+	if params[0].Value != "charlie" || params[0].MaskName != "*" {
+		t.Fatalf("unexpected params: %#v", params)
 	}
 }
 

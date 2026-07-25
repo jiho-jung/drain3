@@ -228,6 +228,16 @@ func (tm *TemplateMiner) ClusterCount() int {
 	return tm.Drain.ClusterCount()
 }
 
+// NewParameterExtractor creates an extractor using this miner's masking,
+// delimiter, and wildcard placeholder configuration.
+func (tm *TemplateMiner) NewParameterExtractor() *ParameterExtractor {
+	return NewParameterExtractorWithParamStr(
+		tm.Masker,
+		tm.Config.Drain.ExtraDelimiters,
+		tm.Drain.ParamStr,
+	)
+}
+
 // GetProfilerReport returns the profiler report string.
 func (tm *TemplateMiner) GetProfilerReport(reset bool) string {
 	return tm.Profiler.Report(reset)
