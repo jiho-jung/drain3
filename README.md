@@ -170,7 +170,7 @@ matched := d.Match("hello world", drain3.SearchStrategyNever)
 Extract variable values from messages using discovered templates.
 
 ```go
-pe := drain3.NewParameterExtractor(tm.Masker, nil)
+pe := tm.NewParameterExtractor()
 params := pe.ExtractParameters("user <*> logged in", "user alice logged in", false)
 // params[0].Value == "alice", params[0].MaskName == "*"
 ```
